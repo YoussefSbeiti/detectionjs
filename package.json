@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "jest"
+    "test": "jest yolo.test.js"
   },
   "author": "",
   "license": "ISC",
@@ -12,6 +12,7 @@
     "jest-cli": "^26.6.3"
   },
   "dependencies": {
-    "@tensorflow/tfjs-node-gpu": "^2.7.0"
+    "@tensorflow/tfjs-node-gpu": "^2.7.0",
+    "node-fetch": "^2.6.1"
   }
 }
