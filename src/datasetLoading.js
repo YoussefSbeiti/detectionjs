@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path')
 const {createLabeler} = require('./labelGeneration');
 const Bbox = require('./structs/bbox')
-const tf = require("@tensorflow/tfjs-node-gpu")
+const tf = require("@tensorflow/tfjs-node-gpu");
 
 
 var parseAnnotation = (labeler) => function(annotationString){
@@ -18,29 +18,43 @@ var parseAnnotation = (labeler) => function(annotationString){
     return labelTensor
 }
 
-function loadAndLabelDataset(datasetPath, resize, labelingConfig){
+var loadImagesAsTensor = (resize) => function(imageContent){
+    return tf.tidy(() => {
+        var imgTensor = tf.node.decodeJpeg( imageContent );
+        return tf.image.resizeBilinear(imgTensor, [resize.height, resize.width ]).expandDims() ;
+    })
+}
+
+var loadAndLabelDataset = (resize, labelingConfig) => (datasetPath) => {
             var classList = fs.readFileSync(datasetPath + path.sep + "_darknet.labels", 'utf-8').split("\n")
          
             var parseAnnotationWithLabeler = parseAnnotation( createLabeler({...labelingConfig, numOfClasses: classList.length}) )
+            var loadAndResizeImage = loadImagesAsTensor(resize)
            
             var filePaths = fs.readdirSync(datasetPath).map(fileName => datasetPath + path.sep + fileName)
 
-            var data = {x:[], y:[]}
-            filePaths.forEach((filePath, index) => {
-                    var img = /(.+)\.jpg$/g.exec(filePath)
-                    if(img != null) {
-                        var imgTensor = tf.node.decodeJpeg( fs.readFileSync(filePath) )
-                        data.x.push( tf.image.resizeBilinear(imgTensor, [resize.height, resize.width ]) );
-                        imgTensor.dispose()
+            var data = filePaths.reduce( (dataset, path, pathIdx) => {
+                var imgName = /(.+)\.jpg$/g.exec(path)
+                if(imgName != null){
+                    imgName = imgName[1]
+                    return tf.tidy(()=>{
+                        var imgTensor = loadAndResizeImage(fs.readFileSync(path));
+                        var newImagesBatch = dataset.imagesBatch ? dataset.imagesBatch.concat(imgTensor) : imgTensor
                         
-                        var labelTensor = parseAnnotationWithLabeler(fs.readFileSync( ( img[1] + ".txt") , "utf-8"))
-                        //var labelTensor = tf.tensor(flatLabel ,[labelingConfig.gridSize, labelingConfig.gridSize, labelingConfig.anchors.length* (5 + classList.length)]);
-                        data.y.push( labelTensor ) ;
-                        console.log("annotated image number " + index)
-                    }      
-            })
+                        var labelTensor = parseAnnotationWithLabeler(fs.readFileSync( ( imgName + ".txt") , "utf-8"))
+                        var newLabelsBatch = dataset.labelsBatch ? dataset.labelsBatch.concat(labelTensor) : labelTensor
+                        
+                        dataset.labelsBatch ? dataset.labelsBatch.dispose() : null
+                        dataset.imagesBatch ? dataset.imagesBatch.dispose() : null
 
-            return { data, classList};
+                        console.log("loaded image number " + pathIdx/2)
+                        return {imagesBatch: newImagesBatch, labelsBatch:newLabelsBatch};
+                    })
+                }
+                return dataset; // to handle the case where path is the path of an annotation file
+            } , {imagesBatch: undefined, labelsBatch: undefined})
+
+            return {data, classList};
 }
 
 

@@ -116,18 +116,6 @@ var createFunctions = (anchors, gridSize, numClasses) => {
 
         return finalTerm
 
-        // var batchSize = true_y.shape[0]
-        // var trueLabels = true_y.split(batchSize, 0)
-        // var predictedLabels = predicted_y.split(batchSize,0)
-        
-        // trueLabels.map( (label,idx) => {
-        //     if(idx != 0)
-        //         return label.squaredDifference(predictedLabels[idx])
-        //     else return tf.zerosLike(label.squaredDifference(predictedLabels[idx]))
-        // })
-
-        // return tf.stack(ssds).mean()
-
     }
 
     var extractBoxesFromPredictedLabelBatch = (labelBatch, scoreThreshold) => {

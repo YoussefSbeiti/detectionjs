@@ -48,7 +48,7 @@ var createLabeler = (labelingConfig) => (annotations) => {
         labelArray = utils.insertAtIndex(labelArray)(idx, localLabel)   
     });
 
-    return tf.tensor(labelArray, [gridSize, gridSize, numOfAnchors* (5 + numOfClasses)])
+    return tf.tensor(labelArray, [1,gridSize, gridSize, numOfAnchors* (5 + numOfClasses)])
 }
 
 
