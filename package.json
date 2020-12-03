@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "@tensorflow/tfjs-node-gpu": "^2.7.0",
-    "node-fetch": "^2.6.1"
+    "node-fetch": "^2.6.1",
+    "opencv4nodejs": "^5.6.0",
+    "tfjs-yolo": "0.0.4"
   }
 }

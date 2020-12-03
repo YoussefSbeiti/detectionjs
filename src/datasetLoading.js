@@ -26,9 +26,9 @@ var loadImagesAsTensor = (resize) => function(imageContent){
 }
 
 var createLoader = (resize, labelingConfig) => (datasetPath) => {
-            var classList = fs.readFileSync(datasetPath + path.sep + "_darknet.labels", 'utf-8').split("\n")
+            //var classList = fs.readFileSync(datasetPath + path.sep + "_darknet.labels", 'utf-8').split("\n")
          
-            var parseAnnotationWithLabeler = parseAnnotation( createLabeler({...labelingConfig, numOfClasses: classList.length}) )
+            var parseAnnotationWithLabeler = parseAnnotation( createLabeler(labelingConfig) )
             var loadAndResizeImage = loadImagesAsTensor(resize)
            
             var filePaths = fs.readdirSync(datasetPath).map(fileName => datasetPath + path.sep + fileName)
@@ -47,14 +47,15 @@ var createLoader = (resize, labelingConfig) => (datasetPath) => {
                         dataset.labelsBatch ? dataset.labelsBatch.dispose() : null
                         dataset.imagesBatch ? dataset.imagesBatch.dispose() : null
 
+                        newFilePaths = dataset.filePaths.concat(imgName)
                         console.log("loaded image number " + pathIdx/2)
-                        return {imagesBatch: newImagesBatch, labelsBatch:newLabelsBatch};
+                        return {imagesBatch: newImagesBatch, labelsBatch:newLabelsBatch, filePaths: newFilePaths};
                     })
                 }
                 return dataset; // to handle the case where path is the path of an annotation file
-            } , {imagesBatch: undefined, labelsBatch: undefined})
+            } , {imagesBatch: undefined, labelsBatch: undefined, filePaths: []})
 
-            return {data, classList};
+            return {data, filePaths};
 }
 
 

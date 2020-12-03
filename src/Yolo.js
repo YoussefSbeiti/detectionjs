@@ -66,6 +66,7 @@ var createFunctions = (anchors, gridSize, numClasses) => {
         var y = labelBatch.slice([0,0, 0, 0, 1], [-1,-1, -1, -1, 1])
         var w = labelBatch.slice([0,0, 0, 0, 2], [-1,-1,-1, -1, 1])
         var h = labelBatch.slice([0,0, 0, 0, 3], [-1,-1,-1,-1, 1])
+        //var angle = labelBatch.slice([0,0, 0, 0, 4], [-1,-1,-1,-1, 1])
         var objectness = labelBatch.slice([0,0, 0, 0, 4], [-1,-1,-1,-1, 1])
         var class_probabilities =  labelBatch.slice([0,0, 0, 0, 5], [-1,-1,-1,-1, numClasses])
 
@@ -123,7 +124,7 @@ var createFunctions = (anchors, gridSize, numClasses) => {
         var splitLabels = labelBatch.split(batchSize, 0)
        
         
-        splitLabels = splitLabels.map( label => {
+        return splitLabels.map( label => {
             var [x, y, w, h, objectness, class_probabilities] = extractValuesFromPredictedLabelBatch(label).map(tn => tn.reshape([gridSize*gridSize*numAnchors, tn.shape[tn.shape.length -1] ]))
 
             var halfWidth = w.div(tf.scalar(2))
@@ -138,19 +139,19 @@ var createFunctions = (anchors, gridSize, numClasses) => {
             scores = scores.gather(selected_indices)
             classes = classes.gather(selected_indices)
 
-            return [classes,scores, boxes]
+            return {classes,scores, boxes}
         
         })
 
-        var splitClasses = splitLabels.map(label => label[0])
-        var splitScores = splitLabels.map(label => label[1])
-        var splitBoxes = splitLabels.map(label => label[2])
+        // var splitClasses = splitLabels.map(label => label[0])
+        // var splitScores = splitLabels.map(label => label[1])
+        // var splitBoxes = splitLabels.map(label => label[2])
 
-        return [
-            splitClasses,
-            splitScores,
-            splitBoxes
-        ]
+        // return [
+        //     splitClasses,
+        //     splitScores,
+        //     splitBoxes
+        // ]
     }
 
     var extractBoxesFromTrueLabelBatch = (labelBatch) => {
@@ -158,7 +159,7 @@ var createFunctions = (anchors, gridSize, numClasses) => {
         var splitLabels = labelBatch.split(batchSize, 0)
 
          
-        splitLabels = splitLabels.map(label => {
+        return splitLabels.map(label => {
             var [x, y, w, h, objectness, class_probabilities] = extractValuesFromTrueLabelBatch(label).map(tn => tn.reshape([-1, tn.shape[tn.shape.length -1]]))
         
             var objectness_mask = tf.greater(objectness , 0)
@@ -175,7 +176,7 @@ var createFunctions = (anchors, gridSize, numClasses) => {
             classes = tf.tensor(classes)
             var scores = tf.onesLike(classes)
             
-            return [classes,scores, boxes]
+            return {classes,scores, boxes}
         })
 
         var splitClasses = splitLabels.map(label => label[0])
@@ -193,18 +194,27 @@ var createFunctions = (anchors, gridSize, numClasses) => {
     var accuracy = (extractBoxesFromPredictedLabelBatch , extractBoxesFromTrueLabelBatch , scoreThreshold = 0.5) => function(trueBatch , predictedBatch){
         var batchSize = trueBatch.shape[0]
 
-        var [predictedClassesBatchArray, predictedScoresBatchArray, predictedBoxesBatchArray] = extractBoxesFromPredictedLabelBatch(predictedBatch, scoreThreshold)
-    
-        var [trueClassesBatchArray, trueScoresBatchArray, trueBoxesBatchArray] = extractBoxesFromTrueLabelBatch(trueBatch)
+        //var [predictedClassesBatchArray, predictedScoresBatchArray, predictedBoxesBatchArray] = extractBoxesFromPredictedLabelBatch(predictedBatch, scoreThreshold)
+        var predictedBatchArray = extractBoxesFromPredictedLabelBatch(predictedBatch, scoreThreshold)
+        
+//        var [trueClassesBatchArray, trueScoresBatchArray, trueBoxesBatchArray] = extractBoxesFromTrueLabelBatch(trueBatch)
+        var trueBatchArray = extractBoxesFromTrueLabelBatch(trueBatch)
 
         var total = tf.tensor(0)
         for(let i = 0; i<batchSize;  i++){
-            var predictedBoxes = predictedBoxesBatchArray[i]
-            var trueBoxes = trueBoxesBatchArray[i]
+            var predictedLabel = predictedBatchArray[i]
+            var trueLabel = trueBatchArray[i]
+
+            var predictedBoxes = predictedLabel.boxes
+            var trueBoxes = trueLabel.boxes
+
+            var predictedClasses = predictedLabel.classes
+            var trueClasses = trueLabel.classes
+
             
-            var ious = iou(trueBoxes.expandDims(1), predictedBoxes);
+            var ious = iou(trueBoxes.expandDims(1), predictedBoxes); //expand dims to make it broadcastable
         
-            var total = total.add(predictedClassesBatchArray[i].gather(ious.argMax(-1)).equal(trueClassesBatchArray[i]).toInt().mul(ious.max(-1)).mean())
+            var total = total.add(predictedClasses.gather(ious.argMax(-1)).equal(trueClasses).toInt().mul(ious.max(-1)).mean())
         }
         
 
