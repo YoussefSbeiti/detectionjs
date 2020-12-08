@@ -37,25 +37,23 @@ var createFunctions = (anchors, gridSize, numClasses) => {
     /**
      *  Used for extracting bboxs from a predicted Label.
      */
-    var grid_y = tf.tidy(() => {
-
-        var linspace = tf.linspace(0, gridSize - 1, gridSize)
-        linspace = linspace.reshape([gridSize, 1])
-    
-        var grid_y = linspace.tile([1, gridSize * anchors.shape[0]])
-        return grid_y.reshape([gridSize, gridSize, anchors.shape[0], 1])
-    
-    })
-    
     var grid_x = tf.tidy(() => {
         var linspace = tf.linspace(0, gridSize - 1, gridSize)
         linspace = linspace.reshape([gridSize, 1])
-    
-        var grid_x = linspace.tile([1, anchors.shape[0]])
-        grid_x = grid_x.tile([gridSize, 1])
+
+        var grid_x = linspace.tile([1, gridSize * anchors.shape[0]])
         return grid_x.reshape([gridSize, gridSize, anchors.shape[0], 1])
+
     })
-    
+
+    var grid_y = tf.tidy(() => {
+        var linspace = tf.linspace(0, gridSize - 1, gridSize)
+        linspace = linspace.reshape([gridSize, 1])
+
+        var grid_y = linspace.tile([1, anchors.shape[0]])
+        grid_y = grid_y.tile([gridSize, 1])
+        return grid_y.reshape([gridSize, gridSize, anchors.shape[0], 1])
+    })
     /**
      * Splits the given label batch into into tensors  x, y, w, h, objectness, classProbabilities 
      * @param {tf.tensor} label  
@@ -84,7 +82,7 @@ var createFunctions = (anchors, gridSize, numClasses) => {
         wBatch = wBatch.exp().mul(anchors.slice([0,0] , [5,1]))
         hBatch = hBatch.exp().mul(anchors.slice([0,1] , [5,1]))
         objectnessBatch = objectnessBatch.sigmoid()
-        classProbabilitiesBatch = classProbabilitiesBatch.softmax().mul(objectnessBatch)
+        classProbabilitiesBatch = classProbabilitiesBatch.softmax()
 
         return [xBatch, yBatch, wBatch, hBatch, objectnessBatch, classProbabilitiesBatch]        
     }
@@ -99,6 +97,7 @@ var createFunctions = (anchors, gridSize, numClasses) => {
         var batchSize = true_y.shape[0]
         var [x_true, y_true, w_true, h_true, objectness_true, class_probabilities_true] = extractValuesFromTrueLabelBatch(true_y)
         var [x_predicted, y_predicted, w_predicted, h_predicted,objectness_predicted, class_probabilities_predicted] = extractValuesFromPredictedLabelBatch(predicted_y)
+        var confidence_predicted = class_probabilities_predicted.mul(objectness_predicted)
 
         var objectness_mask = tf.greater(objectness_true , 0).toInt()
         var no_objectness_mask = tf.equal(objectness_mask, 0).toInt()
@@ -110,31 +109,35 @@ var createFunctions = (anchors, gridSize, numClasses) => {
         var term1 = tf.squaredDifference(x_predicted, x_true).add(tf.squaredDifference(y_predicted, y_true)).mul(objectness_mask).sum().mul(lambda_coord)
         //var term2 = w_predicted.sqrt().sub(w_true.sqrt()).square().add(h_predicted.sqrt().sub(h_true.sqrt()).square()).mul(objectness_mask).sum().mul(lambda_coord)
         var term2 = tf.squaredDifference(w_predicted.sqrt(), w_true.sqrt()).add(tf.squaredDifference(h_predicted.sqrt(), h_true.sqrt())).mul(objectness_mask).sum().mul(lambda_coord)
-        var term3 = objectness_predicted.sub(objectness_true).square().mul(objectness_mask).sum()
-        var term4 = objectness_predicted.sub(objectness_true).square().mul(lambda_noobj).mul(no_objectness_mask).sum()
-        var term5 = class_probabilities_predicted.sub(class_probabilities_true).square().mul(objectness_mask).sum()
+        var term3 = tf.squaredDifference(objectness_predicted, objectness_true).mul(objectness_mask).sum()
+        var term4 = tf.squaredDifference(objectness_predicted,objectness_true).mul(no_objectness_mask).sum().mul(lambda_noobj)
+        var term5 = tf.squaredDifference(confidence_predicted,class_probabilities_true).sum()
+        //var term6 = tf.class_probabilities_predicted.sub(class_probabilities_true).square().mul(no_objectness_mask).sum().mul(lambda_noobj)
         var finalTerm  = term1.add(term2).add(term3).add(term4).add(term5).div(batchSize)
 
         return finalTerm
 
     }
 
-    var extractBoxesFromPredictedLabelBatch = (labelBatch, scoreThreshold) => {
+    var extractBoxesFromPredictedLabelBatch = (labelBatch) => {
         var batchSize = labelBatch.shape[0]
         var splitLabels = labelBatch.split(batchSize, 0)
        
         
         return splitLabels.map( label => {
             var [x, y, w, h, objectness, class_probabilities] = extractValuesFromPredictedLabelBatch(label).map(tn => tn.reshape([gridSize*gridSize*numAnchors, tn.shape[tn.shape.length -1] ]))
-
+            
+            x = x.add(grid_x.reshape([gridSize*gridSize*numAnchors,1])).div(gridSize)
+            y = y.add(grid_y.reshape([gridSize*gridSize*numAnchors,1])).div(gridSize)
+            
             var halfWidth = w.div(tf.scalar(2))
             var halfHeight = h.div(tf.scalar(2))
 
             var boxes = tf.stack([x.sub(halfWidth), y.sub(halfHeight), x.add(halfWidth), y.add(halfHeight)]).transpose().squeeze()
             var classes = class_probabilities.argMax(-1, true);
-            var scores = class_probabilities.max(-1, true).squeeze();
+            var scores = class_probabilities.mul(objectness).max(-1, true).squeeze();
 
-            var selected_indices = tf.image.nonMaxSuppression(boxes, scores, 10, 0.5,scoreThreshold)
+            var selected_indices = tf.image.nonMaxSuppression(boxes, scores, 20, 0.5,0.4)
             boxes = boxes.gather(selected_indices)
             scores = scores.gather(selected_indices)
             classes = classes.gather(selected_indices)
@@ -143,15 +146,6 @@ var createFunctions = (anchors, gridSize, numClasses) => {
         
         })
 
-        // var splitClasses = splitLabels.map(label => label[0])
-        // var splitScores = splitLabels.map(label => label[1])
-        // var splitBoxes = splitLabels.map(label => label[2])
-
-        // return [
-        //     splitClasses,
-        //     splitScores,
-        //     splitBoxes
-        // ]
     }
 
     var extractBoxesFromTrueLabelBatch = (labelBatch) => {
@@ -161,7 +155,10 @@ var createFunctions = (anchors, gridSize, numClasses) => {
          
         return splitLabels.map(label => {
             var [x, y, w, h, objectness, class_probabilities] = extractValuesFromTrueLabelBatch(label).map(tn => tn.reshape([-1, tn.shape[tn.shape.length -1]]))
-        
+            
+            x = x.add(grid_x.reshape([gridSize*gridSize*numAnchors,1])).div(gridSize)
+            y = y.add(grid_y.reshape([gridSize*gridSize*numAnchors,1])).div(gridSize)
+            
             var objectness_mask = tf.greater(objectness , 0)
             
             var values = [x, y, w, h, objectness_mask, class_probabilities]
@@ -179,25 +176,15 @@ var createFunctions = (anchors, gridSize, numClasses) => {
             return {classes,scores, boxes}
         })
 
-        var splitClasses = splitLabels.map(label => label[0])
-        var splitScores = splitLabels.map(label => label[1])
-        var splitBoxes = splitLabels.map(label => label[2])
-
-
-        return [
-            splitClasses,
-            splitScores,
-            splitBoxes
-        ]
     }
 
-    var accuracy = (extractBoxesFromPredictedLabelBatch , extractBoxesFromTrueLabelBatch , scoreThreshold = 0.5) => function(trueBatch , predictedBatch){
+    var accuracy = (extractBoxesFromPredictedLabelBatch , extractBoxesFromTrueLabelBatch ) => function(trueBatch , predictedBatch){
         var batchSize = trueBatch.shape[0]
 
         //var [predictedClassesBatchArray, predictedScoresBatchArray, predictedBoxesBatchArray] = extractBoxesFromPredictedLabelBatch(predictedBatch, scoreThreshold)
-        var predictedBatchArray = extractBoxesFromPredictedLabelBatch(predictedBatch, scoreThreshold)
+        var predictedBatchArray = extractBoxesFromPredictedLabelBatch(predictedBatch)
         
-//        var [trueClassesBatchArray, trueScoresBatchArray, trueBoxesBatchArray] = extractBoxesFromTrueLabelBatch(trueBatch)
+//       var [trueClassesBatchArray, trueScoresBatchArray, trueBoxesBatchArray] = extractBoxesFromTrueLabelBatch(trueBatch)
         var trueBatchArray = extractBoxesFromTrueLabelBatch(trueBatch)
 
         var total = tf.tensor(0)
@@ -211,17 +198,58 @@ var createFunctions = (anchors, gridSize, numClasses) => {
             var predictedClasses = predictedLabel.classes
             var trueClasses = trueLabel.classes
 
-            
+            var predictedScores = predictedLabel.scores
+
             var ious = iou(trueBoxes.expandDims(1), predictedBoxes); //expand dims to make it broadcastable
+            
+            var same_class_mask = trueClasses.expandDims(1).equal(predictedClasses).toInt()
+
+            var labelAcc = ious.mul(same_class_mask).mul(predictedScores).max(-1).mean()
+            labelAcc = labelAcc.arraySync() == -Infinity ? tf.tensor(0) : labelAcc
+            total = total.add(labelAcc)
+        }
+        return total.div(batchSize);
+    }
+
+    var precision = (extractBoxesFromPredictedLabelBatch , extractBoxesFromTrueLabelBatch ) => function(trueBatch , predictedBatch){
+        var batchSize = trueBatch.shape[0]
+
+        //var [predictedClassesBatchArray, predictedScoresBatchArray, predictedBoxesBatchArray] = extractBoxesFromPredictedLabelBatch(predictedBatch, scoreThreshold)
+        var predictedBatchArray = extractBoxesFromPredictedLabelBatch(predictedBatch)
         
-            var total = total.add(predictedClasses.gather(ious.argMax(-1)).equal(trueClasses).toInt().mul(ious.max(-1)).mean())
+//       var [trueClassesBatchArray, trueScoresBatchArray, trueBoxesBatchArray] = extractBoxesFromTrueLabelBatch(trueBatch)
+        var trueBatchArray = extractBoxesFromTrueLabelBatch(trueBatch)
+
+        var total = tf.tensor(0)
+        for(let i = 0; i<batchSize;  i++){
+            var predictedLabel = predictedBatchArray[i]
+            var trueLabel = trueBatchArray[i]
+
+            var predictedBoxes = predictedLabel.boxes
+            var trueBoxes = trueLabel.boxes
+
+            var predictedClasses = predictedLabel.classes
+            var trueClasses = trueLabel.classes
+
+            var predictedScores = predictedLabel.scores
+
+            var high_score_boxes = predictedBoxes.gather(predictedScores.greater(0.2).toInt())
+
+            var ious = iou(predictedBoxes.expandDims(1), trueBoxes); //expand dims to make it broadcastable
+            //var tp_mask = ious.greater(0.5)
+            var same_class_mask = predictedClasses.expandDims(1).equal(trueClasses).toInt()
+            ious = ious.mul(same_class_mask).max(-1)
+            total = total.add(ious.mul(predictedScores).mean())
+            
         }
         
 
         return total.div(batchSize);
     }
     
-    return {batchLoss, accuracy, extractBoxesFromPredictedLabelBatch, extractBoxesFromTrueLabelBatch}
+
+    
+    return {batchLoss, accuracy, extractBoxesFromPredictedLabelBatch, extractBoxesFromTrueLabelBatch, precision}
 
 }
 

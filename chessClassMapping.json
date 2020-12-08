@@ -1,0 +1,16 @@
+{   "newClassList" : ["black-piece" , "white-piece"], 
+    "mappings":{
+        "black-bishop" : "black-piece",
+        "black-king" : "black-piece",
+        "black-knight" : "black-piece",
+        "black-pawn" : "black-piece",
+        "black-queen" : "black-piece",
+        "black-rook": "black-piece",
+        "white-bishop" : "white-piece",
+        "white-king" : "white-piece",
+        "white-knight" : "white-piece",
+        "white-pawn" : "white-piece",
+        "white-queen" : "white-piece",
+        "white-rook" : "white-piece"
+    }
+}

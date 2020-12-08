@@ -1,22 +1,39 @@
-const { data } = require('@tensorflow/tfjs-node-gpu');
+const { data, layers } = require('@tensorflow/tfjs-node-gpu');
 const tf = require('@tensorflow/tfjs-node-gpu')
 const fetch = require('node-fetch');
 const {createFunctions} = require("./Yolo")
 const fs = require("fs")
+const prompt = require('prompt');
 
 var objectDetector = function(modelConfig){
 
     this.modelConfig = modelConfig
-    this.yolo = createFunctions(modelConfig.anchors, modelConfig.gridSize, modelConfig.numOfClasses)
+    this.yolo = createFunctions(tf.tensor(modelConfig.anchors), modelConfig.gridSize, modelConfig.numOfClasses)
 
 }
 
 objectDetector.prototype.buildModel = async function(manifestUrl , weightsUrl){
      
     var numOfClasses = this.modelConfig.numOfClasses
-    var numOfAnchors = this.modelConfig.anchors.shape[0]
+    var numOfAnchors = this.modelConfig.anchors.length
 
-    function conv2d(kernelSize, filters,strides,name, batchInputShape=undefined, useBias = true, padding = "same"){
+    function conv2d(kernelSize, filters,strides,name, trainable = true, preTrained = true,batchInputShape=undefined, useBias = false , padding = "same"){
+        if(preTrained){
+            var weights = [weightsMap[ name + "/kernel"]]// , weightsMap[name + "/bias"] ];
+            console.log("creating preTrained")
+            return tf.layers.conv2d({ useBias:useBias, 
+                                padding:padding,
+                                filters:filters,
+                                kernelSize:kernelSize,
+                                name:name, 
+                                strides:strides,
+                                batchInputShape:batchInputShape,
+                               // kernelRegularizer: trainable ? tf.regularizers.l2({l2:0.001}) : null,
+                                weights: weights,
+                                trainable:trainable
+                            })    
+                        }         
+        console.log("Creating non trained")
         return tf.layers.conv2d({ useBias:useBias, 
                                 padding:padding,
                                 filters:filters,
@@ -24,12 +41,10 @@ objectDetector.prototype.buildModel = async function(manifestUrl , weightsUrl){
                                 name:name, 
                                 strides:strides,
                                 batchInputShape:batchInputShape,
-                                kernelRegularizer: tf.regularizers.l2({l2:0.06}),
-                                //kernelInitializer: tf.initializers.glorotNormal(),
-                                //biasInitializer: tf.initializers.glorotNormal(),
-                                weights: [weightsMap[name + "/kernel"] , weightsMap[name + "/bias"] ],
-                                trainable:true
-                            })            
+                                //kernelRegularizer: tf.regularizers.l2({l2:0.005}),
+                                kernelInitializer : tf.initializers.leCunUniform({}),
+                                trainable:trainable
+                            })    
     }
 
     var manifest = await fetch(manifestUrl);
@@ -49,54 +64,58 @@ objectDetector.prototype.buildModel = async function(manifestUrl , weightsUrl){
     weightsMap["m_outputs0/bias"] = finalLayerBiases
 
     var model = tf.sequential()
-    model.add(conv2d(3,16,1,"layer1_conv", [1,416,416,3]))
-    // model.add(tf.layers.batchNormalization())
+    model.add(conv2d(3,16,1,"layer1_conv",true,true, [1,416,416,3]))
+    model.add(tf.layers.batchNormalization({/*betaRegularizer: tf.regularizers.l2({l2:0.001}),gammaRegularizer: tf.regularizers.l2({l2:0.001})*/ } ))
     model.add(tf.layers.leakyReLU({alpha:0.1}))
     model.add(tf.layers.maxPooling2d({ trainable: false,padding: "valid" , poolSize: 2 , strides:2}))
 
-    model.add(conv2d(3,32,1,"layer2_conv"))
-    // model.add(tf.layers.batchNormalization())
+    model.add(conv2d(3,32,1,"layer2_conv",true))
+    model.add(tf.layers.batchNormalization({/*betaRegularizer: tf.regularizers.l2({l2:0.001}),gammaRegularizer: tf.regularizers.l2({l2:0.001})*/ } ))
     model.add(tf.layers.leakyReLU({alpha:0.1}))
     model.add(tf.layers.maxPooling2d({ trainable: false,padding: "valid" , poolSize: 2 , strides:2}))
 
-    model.add(conv2d(3,64,1,"layer3_conv"))
-    // model.add(tf.layers.batchNormalization())
+    model.add(conv2d(3,64,1,"layer3_conv",true))
+    model.add(tf.layers.batchNormalization({/*betaRegularizer: tf.regularizers.l2({l2:0.001}),gammaRegularizer: tf.regularizers.l2({l2:0.001})*/ } ))
     model.add(tf.layers.leakyReLU({alpha:0.1}))
     model.add(tf.layers.maxPooling2d({ trainable: false,padding: "valid" , poolSize: 2 , strides:2}))
 
-    model.add(conv2d(3,128,1,"layer4_conv"))
-    // model.add(tf.layers.batchNormalization())
+    model.add(conv2d(3,128,1,"layer4_conv",true))
+    model.add(tf.layers.batchNormalization({/*betaRegularizer: tf.regularizers.l2({l2:0.001}),gammaRegularizer: tf.regularizers.l2({l2:0.001})*/ } ))
     model.add(tf.layers.leakyReLU({alpha:0.1}))
     model.add(tf.layers.maxPooling2d({ trainable: false,padding: "valid" , poolSize: 2 , strides:2}))
     
-    model.add(conv2d(3,256,1,"layer5_conv"))
-    // model.add(tf.layers.batchNormalization())
+    model.add(conv2d(3,256,1,"layer5_conv",true))
+    model.add(tf.layers.batchNormalization({/*betaRegularizer: tf.regularizers.l2({l2:0.001}),gammaRegularizer: tf.regularizers.l2({l2:0.001})*/ } ))
     model.add(tf.layers.leakyReLU({alpha:0.1}))
     model.add(tf.layers.maxPooling2d({ trainable: false,padding: "valid" , poolSize: 2 , strides:2}))
-    
-    model.add(conv2d(3,512,1,"layer6_conv"))
-    // model.add(tf.layers.batchNormalization())
+
+    model.add(conv2d(3,512,1,"layer6_conv",true))
+    model.add(tf.layers.batchNormalization({/*betaRegularizer: tf.regularizers.l2({l2:0.001}),gammaRegularizer: tf.regularizers.l2({l2:0.001})*/ } ))
     model.add(tf.layers.leakyReLU({alpha:0.1}))
     model.add(tf.layers.maxPooling2d({ trainable: false,padding: "same" , poolSize: 2 , strides:1}))
     
-    model.add(conv2d(3,1024,1,"layer7_conv"))
-    // model.add(tf.layers.batchNormalization())
+    model.add(conv2d(3,1024,1,"layer7_conv", true))
+    model.add(tf.layers.batchNormalization({/*betaRegularizer: tf.regularizers.l2({l2:0.001}),gammaRegularizer: tf.regularizers.l2({l2:0.001})*/ } ))
     model.add(tf.layers.leakyReLU({alpha:0.1}))
-    
-    model.add(conv2d(3,512,1,"layer8_conv"))
-    // model.add(tf.layers.batchNormalization())
+   
+    model.add(conv2d(3,512,1,"layer8_conv", true))
+    model.add(tf.layers.batchNormalization({/*betaRegularizer: tf.regularizers.l2({l2:0.001}),gammaRegularizer: tf.regularizers.l2({l2:0.001})*/ } ))
     model.add(tf.layers.leakyReLU({alpha:0.1}))
+
+    model.add(conv2d(1,(5+numOfClasses)*numOfAnchors,1,"m_outputs0", true))
+    model.add(tf.layers.batchNormalization({/*betaRegularizer: tf.regularizers.l2({l2:0.001}),gammaRegularizer: tf.regularizers.l2({l2:0.001})*/ } ))
     
-    //model.add(tf.layers.conv2d({useBias:true, padding:"same",filters:(5+numOfClasses)*numOfAnchors , kernelSize:1,name:"m_outputs0", weights:[finalLayerWeights , finalLayerBiases],strides:1}))
-    model.add(conv2d(1,(5+numOfClasses)*numOfAnchors,1,"m_outputs0"))
+    
     model.compile({
         optimizer: tf.train.adam(0.0001),
         loss: this.yolo.batchLoss,
-        metrics : this.yolo.accuracy(this.yolo.extractBoxesFromPredictedLabelBatch, this.yolo.extractBoxesFromTrueLabelBatch)
+        metrics : [this.yolo.accuracy(this.yolo.extractBoxesFromPredictedLabelBatch, this.yolo.extractBoxesFromTrueLabelBatch),
+            this.yolo.precision(this.yolo.extractBoxesFromPredictedLabelBatch, this.yolo.extractBoxesFromTrueLabelBatch)]
     })
-
+    
     console.log("Model built successfully!")
     console.log(model.summary())
+    console.log(tf.memory())
 
     this.model = model
 
@@ -107,30 +126,30 @@ objectDetector.prototype.buildModel = async function(manifestUrl , weightsUrl){
 *   @param{int} epochs
 *   @param{int} batch size
 */
-objectDetector.prototype.train = async function(x,y, epochs, batchSize, validationX,validationY){
-    await this.model.fit(x, y,{epochs : epochs, batchSize: batchSize ,/*validationData: [validationX, validationY]*/shuffle:true,
+objectDetector.prototype.train = async function(dataset,epochs, validationSet){
+    await this.model.fitDataset(dataset,{epochs : epochs, validationData: validationSet,
         callbacks:
         [  
-            //tf.callbacks.earlyStopping({monitor: 'val_', minDelta : 0.009, patience: 10, mode: 'max'}) ,
+            tf.callbacks.earlyStopping({monitor: 'val_', minDelta : 0.01, patience: 10, mode: 'max'}) ,
             
             new tf.CustomCallback({
                onEpochEnd: async (epoch, logs) => {
-                //tf.callbacks.earlyStopping({monitor: 'val_acc'})
                 console.log(tf.memory().numTensors + " tensors")
-                //console.log({'loss' :logs.loss , 'trainLoss' : logs.sequential_2_loss, 'trainAcc' : logs.sequential_2_acc, 'valLoss' : logs.val_sequential_2_loss, 'valAcc' : logs.val_sequential_2_acc})
                 console.log(logs)
                 console.log(epoch)
-                }
-            })
+                }//,
+               // onBatchEnd: ()=> console.log("memory stats : " + tf.memory())
+            }),
+
+            
         ]
     })
 }
 
-objectDetector.prototype.detectBatch = async function(imgBatch){
-    //var preprocessedBatch = this._preprocessImage(imgBatch)
-    var predictions = await this.model.predict(imgBatch)
-    //preprocessedBatch.dispose()
-    return this.yolo.extractBoxesFromPredictedLabelBatch(predictions)
+objectDetector.prototype.detect = function(imgBatch, scoreThresh){
+    var predictions = this.model.predict(imgBatch)
+
+    return this.yolo.extractBoxesFromPredictedLabelBatch(predictions, scoreThresh)
 }
 
 objectDetector.prototype._preprocessXBatch = async function(imgBatch){

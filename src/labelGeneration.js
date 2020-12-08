@@ -38,7 +38,8 @@ var createLabeler = (labelingConfig) => (annotations) => {
         //var anchorRelativeDimensions = Anchor.bboxRelativeDimensions(correspondingAnchor)(Bbox.dimensions(bbox))
         var idx = getFlatLabelIdx(correspondingGridCell,correspondingAnchorIdx)
         
-        var localLabel = [].concat(Bbox.center(bbox),
+        var localLabel = [].concat(//Bbox.center(bbox),
+            inCellCenterCoords,
             Bbox.dimensions(bbox),
             [1],
             utils.oneHot(numOfClasses)(classIdx)
