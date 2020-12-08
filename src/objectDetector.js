@@ -105,7 +105,7 @@ objectDetector.prototype.buildModel = async function(manifestUrl , weightsUrl){
     
     
     model.compile({
-        optimizer: tf.train.adam(0.001),
+        optimizer: tf.train.adam(0.0001),
         loss: this.yolo.batchLoss,
         metrics : [this.yolo.accuracy(this.yolo.extractBoxesFromPredictedLabelBatch, this.yolo.extractBoxesFromTrueLabelBatch),
             this.yolo.precision(this.yolo.extractBoxesFromPredictedLabelBatch, this.yolo.extractBoxesFromTrueLabelBatch)]

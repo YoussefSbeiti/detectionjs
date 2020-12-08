@@ -2,7 +2,6 @@ const tf = require('@tensorflow/tfjs-node-gpu')
 const path = require("path")
 const objectDetector = require('./objectDetector.js')
 const {createLoader} = require('./datasetLoading');
-const fetch = require('node-fetch')
 const fs = require('fs');
 const prompt = require('prompt-sync')();
   
