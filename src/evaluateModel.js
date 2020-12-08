@@ -4,7 +4,6 @@ const fs = require('fs')
 const {loadImagesAsTensor} = require("./datasetLoading")
 const objectDetector = require("./objectDetector")
 const tf = require("@tensorflow/tfjs-node-gpu")
-const {PythonShell} = require("python-shell")
 
 var predictionToString = function(prediction){
     var bboxes = prediction.boxes.arraySync()

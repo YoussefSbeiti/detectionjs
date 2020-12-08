@@ -3,7 +3,6 @@ const path = require('path')
 const {createLabeler} = require('./labelGeneration');
 const Bbox = require('./structs/bbox')
 const tf = require("@tensorflow/tfjs-node-gpu");
-const { split } = require('opencv4nodejs');
 
 
 var parseAnnotation = (labeler) => function(annotationString){
